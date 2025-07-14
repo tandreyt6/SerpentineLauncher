@@ -1,0 +1,13 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+<qresource prefix="/">
+    <file>Minecraft.png</file>
+    <file>fabric.png</file>
+    <file>forge.png</file>
+    <file>quilt.png</file>
+    <file>settings.png</file>
+    <file>mods.png</file>
+    <file>tools.ico</file>
+    <file>plus.png</file>
+</qresource>
+</RCC>
