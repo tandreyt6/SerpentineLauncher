@@ -19,7 +19,7 @@ from UI.translate import lang
 from UI.windows import windowAbs
 from UI.windows.windowAbs import DialogAbs
 from func import memory
-from UI.Style import DARK_STYLESHEET
+from UI.Style import TEMPLATE_STYLE
 from func.BuildManager import slugify, BuildManager
 from func.CreateShortcut import create_shortcut
 from func.LaunchThread import LauncherThread
@@ -32,7 +32,7 @@ class VersionSelectionDialog(DialogAbs):
     def __init__(self, build_manager, parent=None):
         super().__init__(parent)
         self.setWindowTitle(lang.Dialogs.select_version_title)
-        self.setStyleSheet(DARK_STYLESHEET)
+        self.setStyleSheet(TEMPLATE_STYLE)
         self.setMinimumSize(600, 400)
         self.build_manager = build_manager
 
@@ -160,7 +160,7 @@ class BuildsPage(QWidget):
         self.allCards = {}
         self.launcher = main
         self.setObjectName("container")
-        self.setStyleSheet(DARK_STYLESHEET)
+        self.setStyleSheet(TEMPLATE_STYLE)
         self.build_manager = BuildManager(
             minecraft_versions=memory.get("minecraft_versions", []),
             core_types=memory.get("core_types", []),

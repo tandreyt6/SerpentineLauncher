@@ -1,9 +1,14 @@
 import os
 import signal
+import subprocess
+import sys
+import time
 
 from PyQt6.QtCore import QTimer, QRect, Qt
 from PyQt6.QtGui import QIcon, QCloseEvent
 
+import build_info
+from UI.elements.AnimStackedWidget import FadeStackedWidget
 from UI.elements.CardWidget import CardWidget, BuildCard
 from UI.elements.ExpandablePanel import ExpandablePanel
 from UI.elements.CompactWidgets import PanelButton
@@ -13,13 +18,15 @@ from UI.pages.settings import SettingsWidget
 from UI.pages.versions import BuildsPage
 from UI.pages.mods import ModsPage
 from UI.translate import lang
+from UI.windows import windowAbs
 from UI.windows.windowAbs import WindowAbs, DialogAbs
 from UI.icons import resources
 
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QStackedWidget, QDialog, \
     QApplication, QMessageBox
 
-from func import settings
+from func import settings, Console
+from func.GitUpdater import get_latest_release_tag, download_updater_exe, get_latest_release_tag_for_launcher_version
 
 
 class Window(WindowAbs):
@@ -41,21 +48,23 @@ class Window(WindowAbs):
         self.h.setContentsMargins(0, 0, 0, 0)
         self.v.setContentsMargins(2, 2, 2, 2)
 
-        self.expPanel = ExpandablePanel(self, 30, 100)
+        self.expPanel = ExpandablePanel(self, 37, 120)
         self.h.addWidget(self.expPanel)
 
-        self.viewPages = QStackedWidget()
+        self.viewPages = FadeStackedWidget()
         self.h.addWidget(self.viewPages, 1)
 
         self.profilePage = OfflineProfilePage(self)
         self.profilePageIndex = self.viewPages.addWidget(self.profilePage)
 
-        self.profilePageBtn = PanelButton(lang.Elements.profile)
-        self.profilePageBtn.setIcon(QIcon(":Minecraft.png"))
-        self.profilePageBtn.clicked.connect(lambda: self.viewPages.setCurrentIndex(self.profilePageIndex))
-        self.expPanel.addWidget(self.profilePageBtn)
+        self.profile_page_btn = PanelButton(lang.Elements.profile)
+        self.profile_page_btn.setObjectName("NavigationPanelButton")
+        self.profile_page_btn.setIcon(QIcon(":Minecraft.png"))
+        self.profile_page_btn.clicked.connect(lambda: self.viewPages.setCurrentIndex(self.profilePageIndex))
+        self.expPanel.addWidget(self.profile_page_btn)
 
         self.builds_page_btn = PanelButton(lang.Elements.builds)
+        self.builds_page_btn.setObjectName("NavigationPanelButton")
         self.builds_page_btn.setIcon(QIcon(":tools.ico"))
         self.builds_page_btn.clicked.connect(
             lambda: self.viewPages.setCurrentIndex(self.builds_page_index)
@@ -67,7 +76,8 @@ class Window(WindowAbs):
         self.builds_page_index = self.viewPages.addWidget(self.builds_page)
 
         self.cores_page_btn = PanelButton(lang.Elements.cores)
-        self.cores_page_btn.setIcon(QIcon(":tools.ico"))
+        self.cores_page_btn.setObjectName("NavigationPanelButton")
+        self.cores_page_btn.setIcon(QIcon(":download.png"))
         self.cores_page_btn.clicked.connect(
             lambda: self.viewPages.setCurrentIndex(self.cores_page_index)
         )
@@ -77,6 +87,7 @@ class Window(WindowAbs):
         self.cores_page_index = self.viewPages.addWidget(self.cores_page)
 
         self.mods_page_btn = PanelButton(lang.Elements.mods)
+        self.mods_page_btn.setObjectName("NavigationPanelButton")
         self.mods_page_btn.setIcon(QIcon(":mods.png"))
         self.mods_page_btn.clicked.connect(
             lambda: self.viewPages.setCurrentIndex(self.mods_page_index)
@@ -90,6 +101,7 @@ class Window(WindowAbs):
         self.settings_page_index = self.viewPages.addWidget(self.settings_page)
 
         self.settings_page_btn = PanelButton(lang.Elements.settings)
+        self.settings_page_btn.setObjectName("NavigationPanelButton")
         self.settings_page_btn.setIcon(QIcon(":settings.png"))
         self.settings_page_btn.clicked.connect(
             lambda: self.viewPages.setCurrentIndex(self.settings_page_index)
@@ -118,17 +130,14 @@ class Window(WindowAbs):
         self.expPanel.update()
         self.update()
 
-    def closeEvent(self, a0):
-        if len(self.builds_page.allGameThreads) == 0:
-            super().closeEvent(a0)
-            return
-
+    def close_all_clients(self):
         dialog = DialogAbs(self)
-        dialog.setCentralWidget(QWidget())
+        wid = QWidget()
+        dialog.setCentralWidget(wid)
         dialog.setWindowTitle(lang.Dialogs.confirm_title)
-        dialog.setFixedSize(400, 200)
+        dialog.setFixedSize(300, 100)
 
-        layout = QVBoxLayout(dialog.centralContainer)
+        layout = QVBoxLayout(wid)
 
         label = QLabel(lang.Dialogs.confirm_text)
         label.setWordWrap(True)
@@ -170,13 +179,66 @@ class Window(WindowAbs):
         result = dialog.exec()
 
         if self._close_action == "close_all":
-            for t in self.builds_page.allGameThreads:
-                print(1)
-                os.kill(self.builds_page.allGameThreads[t], signal.SIGILL)
-            super().closeEvent(a0)
+            self.killAllClients()
+            return True
         elif self._close_action == "hide":
             self.hide()
-            a0.ignore()
+        return False
+
+    def showUpdateSuccessfullInfo(self):
+        print("Update installation is complete!")
+        windowAbs.information(self, "", lang.Dialogs.update_successfully_info, btn_text=lang.Dialogs.ok,
+                              width=250, height=130)
+
+    def killAllClients(self):
+        print("Executed all kills")
+        for t in self.builds_page.allGameThreads:
+            print(t)
+            os.kill(self.builds_page.allGameThreads[t], signal.SIGILL)
+
+    def close_with_update(self, event):
+        if not self.settings_page._startLauncherAfterUpdate and not settings.get("silentUpdate", True):
+            print("Silent installation is disabled.")
+            super().closeEvent(event)
+            return
+        print("Check update:", self.settings_page._SilentNeedUpdate)
+        needLauncher, needUpdater = self.settings_page._SilentNeedUpdate
+        if not (needLauncher or needUpdater):
+            print("Latest version installer -> Closing App...")
+            super().closeEvent(event)
+            return
+        self.hide()
+        ver, release = get_latest_release_tag_for_launcher_version(build_info.BUILD_VERSION)
+        print("Installing", ver, release)
+        if needUpdater:
+            download_updater_exe(ver[1:])
+        if not os.path.exists("updater.exe"):
+            print("updater.exe not found")
+            super().closeEvent(event)
+            return
+        if needLauncher:
+            self.settings_page.download_update_zip_for_later_installation(ver, release)
+            v = subprocess.CREATE_NEW_CONSOLE if Console.isVisible() else subprocess.CREATE_NO_WINDOW
+            args = ["updater.exe"]
+            args.append("--skip-download")
+            args.append("--pid="+str(os.getpid()))
+            args.append("--no-start") if self.settings_page._startLauncherAfterUpdate else None
+            args.append(build_info.BUILD_VERSION)
+            subprocess.Popen(
+                args,
+                creationflags=v
+            )
+            print("wait updater.exe...")
+            time.sleep(10)
+        super().closeEvent(event)
+
+    def closeEvent(self, a0):
+        if len(self.builds_page.allGameThreads) == 0:
+            self.close_with_update(a0)
+            return
+
+        if self.close_all_clients():
+            self.close_with_update(a0)
         else:
             a0.ignore()
 

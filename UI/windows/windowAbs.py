@@ -108,7 +108,7 @@ class OutlineWidget(QWidget):
             return
 
         painter = QPainter(self)
-        pen = QPen(QColor(255, 255, 255), 4)
+        pen = QPen(QColor(255, 255, 255), 2)
         painter.setPen(pen)
 
         parent_rect_global = self.parent_window.frameGeometry()
@@ -218,7 +218,7 @@ class WindowAbs(QMainWindow):
         self.pointMode = None
 
         self.corner_radius = 10
-        self.background_color = QColor(45, 45, 45)
+        self.background_color = QColor(18, 18, 18)
         self.border_color = QColor(80, 80, 80)
         self.border_width = 2
 
@@ -393,7 +393,7 @@ class DialogAbs(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         self.corner_radius = 10
-        self.background_color = QColor(45, 45, 45)
+        self.background_color = QColor(12, 12, 12)
         self.border_color = QColor(80, 80, 80)
         self.border_width = 2
         self.pointMode = None
@@ -455,6 +455,8 @@ class DialogAbs(QDialog):
         painter.drawPath(path)
 
     def checkMousePos(self):
+        if self.maximumSize() == self.minimumSize():
+            return
         direct = self.getDirectionMousePos()
         if direct in ["top_right", "bottom_left"]:
             self.setCursor(Qt.CursorShape.SizeBDiagCursor)
@@ -469,7 +471,7 @@ class DialogAbs(QDialog):
 
     def getDirectionMousePos(self):
         pos = self.mapFromGlobal(QCursor.pos())
-        if self.isMaximized():
+        if self.isMaximized() or self.maximumSize() == self.minimumSize():
             return None
         if pos.x() > self.width() - 10 and pos.y() < 10:
             return "top_right"
@@ -499,29 +501,30 @@ class DialogAbs(QDialog):
         super().mouseReleaseEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent):
-        geometry = self.geometry()
-        if self.pointMode:
-            pos = QCursor.pos()
-            if self.pointMode == "top_right":
-                geometry.setTopRight(pos)
-            elif self.pointMode == "top_left":
-                oldpos = QPoint(geometry.x(), geometry.y())
-                geometry.setTopLeft(pos)
-                geometry.setX(oldpos.x())
-                geometry.setY(oldpos.y())
-            elif self.pointMode == "bottom_right":
-                geometry.setBottomRight(pos)
-            elif self.pointMode == "bottom_left":
-                geometry.setBottomLeft(pos)
-            elif self.pointMode == "top":
-                geometry.setTop(pos.y())
-            elif self.pointMode == "bottom":
-                geometry.setBottom(pos.y())
-            elif self.pointMode == "right":
-                geometry.setRight(pos.x())
-            elif self.pointMode == "left":
-                geometry.setLeft(pos.x())
-            self.setGeometry(geometry)
+        if self.maximumSize() != self.minimumSize():
+            geometry = self.geometry()
+            if self.pointMode:
+                pos = QCursor.pos()
+                if self.pointMode == "top_right":
+                    geometry.setTopRight(pos)
+                elif self.pointMode == "top_left":
+                    oldpos = QPoint(geometry.x(), geometry.y())
+                    geometry.setTopLeft(pos)
+                    geometry.setX(oldpos.x())
+                    geometry.setY(oldpos.y())
+                elif self.pointMode == "bottom_right":
+                    geometry.setBottomRight(pos)
+                elif self.pointMode == "bottom_left":
+                    geometry.setBottomLeft(pos)
+                elif self.pointMode == "top":
+                    geometry.setTop(pos.y())
+                elif self.pointMode == "bottom":
+                    geometry.setBottom(pos.y())
+                elif self.pointMode == "right":
+                    geometry.setRight(pos.x())
+                elif self.pointMode == "left":
+                    geometry.setLeft(pos.x())
+                self.setGeometry(geometry)
         super().mouseMoveEvent(event)
 
     def closeEvent(self, event):

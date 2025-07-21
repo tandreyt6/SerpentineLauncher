@@ -10,7 +10,7 @@ import os
 import uuid
 import secrets
 
-from UI.Style import DARK_STYLESHEET
+from UI.Style import TEMPLATE_STYLE
 from UI.windows import windowAbs
 from func import memory
 from UI.translate import lang
@@ -22,7 +22,7 @@ class OfflineProfilePage(QWidget):
         super().__init__(parent)
         self.launcher = main
         self.setObjectName("container")
-        self.setStyleSheet(DARK_STYLESHEET)
+        self.setStyleSheet(TEMPLATE_STYLE)
         self.profiles = []
         self.active_profile_id = None
         self.selected_profile_id = None
@@ -239,7 +239,7 @@ class OfflineProfilePage(QWidget):
         info_layout = QVBoxLayout()
         info_layout.setSpacing(4)
 
-        name_label = QLabel(profile['nickname'])  # Динамический текст, не переводится
+        name_label = QLabel(profile['nickname'])
         name_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Medium))
         info_layout.addWidget(name_label)
 
@@ -258,12 +258,10 @@ class OfflineProfilePage(QWidget):
         self.delete_btn.setFixedSize(64, 26)
         card_layout.addWidget(self.delete_btn)
 
-        if profile.get('active'):
-            self.delete_btn.setVisible(False)
-        else:
-            self.delete_btn.clicked.connect(
-                lambda _, id=profile['id']: self.delete_profile(id)
-            )
+        self.delete_btn.setVisible(not profile.get('active'))
+        self.delete_btn.clicked.connect(
+            lambda _, id=profile['id']: self.delete_profile(id)
+        )
 
         self.profiles_container_layout.insertWidget(0, card)
         profile['card'] = card
@@ -316,15 +314,18 @@ class OfflineProfilePage(QWidget):
         profile = next(p for p in self.profiles if p['id'] == self.selected_profile_id)
 
     def delete_profile(self, profile_id):
+        print(profile_id)
         profile = next((p for p in self.profiles if p['id'] == profile_id), None)
+        print(profile, not profile)
         if not profile:
             return
-
+        print("Delete profile...")
         reply = windowAbs.question(
             self,
             lang.Dialogs.confirm_deletion_title,
             lang.Dialogs.confirm_deletion_text.format(nickname=profile['nickname']),
-            lang.Dialogs.yes | lang.Dialogs.no
+            yes_text=lang.Dialogs.yes,
+            no_text=lang.Dialogs.no,
         )
 
         if not reply:

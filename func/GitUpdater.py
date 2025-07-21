@@ -1,18 +1,25 @@
+import argparse
+import ctypes
 import os
+import signal
 import sys
 import time
 import zipfile
 import shutil
+from argparse import ArgumentError
+from ctypes import wintypes
+
 import requests
 import subprocess
 
 REPO = "tandreyt6/SerpentineLauncher"
+UPDATER_VERSION = "1"
 
 
-def get_latest_release_tag() -> str | None:
+def get_latest_release_tag(timeout=5) -> str | None:
     url = f"https://api.github.com/repos/{REPO}/releases"
     try:
-        response = requests.get(url, timeout=5)
+        response = requests.get(url, timeout=timeout)
         response.raise_for_status()
         releases = response.json()
         for release in releases:
@@ -24,6 +31,7 @@ def get_latest_release_tag() -> str | None:
         return None
     except Exception:
         return None
+
 
 def get_latest_release_notes() -> str | None:
     url = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -37,6 +45,7 @@ def get_latest_release_notes() -> str | None:
     except Exception:
         return None
 
+
 def print_progress_bar(iteration, total, length=40):
     percent = f"{100 * (iteration / float(total)):.1f}"
     filled_length = int(length * iteration // total)
@@ -44,6 +53,7 @@ def print_progress_bar(iteration, total, length=40):
     print(f"\rDownloading: |{bar}| {percent}% ", end='\r')
     if iteration >= total:
         print()
+
 
 def download_with_progress(url, path):
     with requests.get(url, stream=True) as r:
@@ -57,25 +67,30 @@ def download_with_progress(url, path):
                     downloaded += len(chunk)
                     print_progress_bar(downloaded, total)
 
+
+def download_updater_exe(version: str, path: str = "updater.exe"):
+    url = f"https://github.com/{REPO}/releases/download/v{version}/updater.exe"
+    download_with_progress(url, path)
+
+
 def get_latest_release_tag_for_launcher_version(launcher_version):
     url = f"https://api.github.com/repos/{REPO}/releases"
     response = requests.get(url)
     response.raise_for_status()
     releases = response.json()
-
+    print(url, releases)
     filtered = []
     for release in releases:
         if release.get("draft"):
             continue
         tag = release.get("tag_name", "")
+        print(tag, launcher_version)
         if not tag.startswith("v"):
             continue
         try:
             x_str, y_str = tag[1:].split(".")
-            x = int(x_str)
             y = int(y_str)
-            if x == launcher_version:
-                filtered.append((y, tag, release))
+            filtered.append((y, tag, release))
         except Exception:
             continue
 
@@ -84,6 +99,7 @@ def get_latest_release_tag_for_launcher_version(launcher_version):
 
     filtered.sort(key=lambda t: t[0], reverse=True)
     return filtered[0][1], filtered[0][2]
+
 
 def get_zip_root_items(zip_path):
     with zipfile.ZipFile(zip_path, 'r') as zipf:
@@ -94,46 +110,80 @@ def get_zip_root_items(zip_path):
                 items.add(parts[0])
         return list(items)
 
-def remove_existing(items):
-    for item in items:
-        if os.path.exists(item):
-            if os.path.isdir(item):
-                shutil.rmtree(item, ignore_errors=True)
-            else:
-                os.remove(item)
 
 def extract_zip(zip_path, to_path="."):
     with zipfile.ZipFile(zip_path, 'r') as zipf:
         zipf.extractall(to_path)
 
+
 def restart_launcher():
-    launcher_exe = "main.exe"
-    if not os.path.exists(launcher_exe):
-        launcher_exe = "main.py"
-    if launcher_exe.endswith(".exe"):
-        subprocess.Popen([launcher_exe, "--with-update"])
-    else:
-        subprocess.Popen([sys.executable, launcher_exe, "--with-update"])
+    launcher_exe = "SerpentineLauncher.exe"
+    subprocess.Popen([launcher_exe, "--with-update"], creationflags=subprocess.CREATE_NEW_CONSOLE )
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Updater for Serpentine Launcher")
+    parser.add_argument("launcher_version", type=int, help="Current launcher major version")
+    parser.add_argument("--pid", type=int, default=-1, help="Current launcher major version")
+    parser.add_argument("--skip-download", action="store_true", help="Skip downloading update.zip")
+    parser.add_argument("--no-start", action="store_true", help="No start launcher")
+    parser.add_argument("-v", "--version", action="store_true", help="Print updater version and exit")
+    return parser.parse_args()
+
+
+def isProcessAlive(pid: int) -> bool:
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if handle:
+        exit_code = wintypes.DWORD()
+        ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+        ctypes.windll.kernel32.CloseHandle(handle)
+        return exit_code.value == 259
+    return False
+
 
 def main():
-    if len(sys.argv) < 2:
-        print("Missing launcher version argument")
-        sys.exit(1)
+    args = parse_args()
+    if args.version:
+        print(UPDATER_VERSION, end="")
+        sys.exit(0)
+    print(args.pid)
 
-    try:
-        launcher_version = int(sys.argv[1])
-    except ValueError:
-        print("Launcher version must be an integer")
-        sys.exit(1)
+    if not isProcessAlive(args.pid):
+        raise ArgumentError("To install the update, you must transfer the PID of the Active launcher process.")
+    os.kill(args.pid, signal.SIGILL)
 
-    print(f"Looking for updates for launcher version {launcher_version}...")
+    if args.skip_download:
+        zip_path = "update.zip"
+        if not os.path.exists(zip_path):
+            print("update.zip not found, skipping")
+            sys.exit(0)
 
-    tag, release = get_latest_release_tag_for_launcher_version(launcher_version)
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zipf:
+                if zipf.testzip() is not None:
+                    raise zipfile.BadZipFile
+        except Exception:
+            print("update.zip is not valid")
+            sys.exit(1)
+
+        print("Applying existing update.zip...")
+        roots = get_zip_root_items(zip_path)
+        extract_zip(zip_path)
+        os.remove(zip_path)
+
+        print("Update applied. Restarting launcher...")
+        if not args.no_start:
+            restart_launcher()
+        return
+
+    print(f"Looking for updates for launcher version {args.launcher_version}...")
+
+    tag, release = get_latest_release_tag_for_launcher_version(args.launcher_version)
     if tag is None:
-        print(f"No releases found for launcher version {launcher_version}")
+        print(f"No releases found for launcher version {args.launcher_version}")
         sys.exit(0)
 
-    print(f"Latest release for launcher version {launcher_version}: {tag}")
+    print(f"Latest release for launcher version {args.launcher_version}: {tag}")
 
     assets = {a["name"]: a["browser_download_url"] for a in release["assets"]}
     if "update.zip" not in assets:
@@ -147,13 +197,13 @@ def main():
     download_with_progress(zip_url, zip_path)
 
     print("Applying update...")
-    roots = get_zip_root_items(zip_path)
-    remove_existing(roots)
     extract_zip(zip_path)
     os.remove(zip_path)
 
     print("Update applied. Restarting launcher...")
-    restart_launcher()
+    if not args.no_start:
+        restart_launcher()
+
 
 if __name__ == "__main__":
     main()

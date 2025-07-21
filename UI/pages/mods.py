@@ -12,7 +12,7 @@ from pyrinth.projects import Project
 from pyrinth.teams import Team
 import pyrinth.exceptions as exceptions
 import func.memory as memory
-from UI.Style import DARK_STYLESHEET
+from UI.Style import TEMPLATE_STYLE
 from UI.elements.ModElements import ModWidget
 from UI.translate import lang
 from UI.windows import windowAbs
@@ -165,7 +165,7 @@ class ModsPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("container")
-        self.setStyleSheet(DARK_STYLESHEET)
+        self.setStyleSheet(TEMPLATE_STYLE)
         self.thread_pool = QThreadPool()
         self.mods_queue = []
         self.active_threads = []

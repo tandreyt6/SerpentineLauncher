@@ -58,6 +58,10 @@ parser.add_argument("-i", "--install-core",
     type=str,
     help="Downloads the selected version of the core")
 
+parser.add_argument("--with-update",
+    action="store_true",
+    help="Show a window about the completion of the update")
+
 args = parser.parse_args()
 if args.help:
     parser.print_help()
@@ -75,5 +79,7 @@ msg = {
     "nostart": args.nostart,
     "p": args.profile,
     "sp": args.set_profile,
-    "debug": args.debug
+    "debug": args.debug,
+    "with_update": args.with_update,
+    "CWD": os.getcwd()
 }

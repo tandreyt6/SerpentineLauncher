@@ -9,5 +9,6 @@
     <file>mods.png</file>
     <file>tools.ico</file>
     <file>plus.png</file>
+    <file>download.png</file>
 </qresource>
 </RCC>

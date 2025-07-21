@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import QDialog, QVBoxLayout, QProgressBar, QTextEdit, QDial
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer
 import logging
 
-from UI.Style import DARK_STYLESHEET
+from UI.Style import TEMPLATE_STYLE
 from UI.translate import lang
 from UI.windows.windowAbs import DialogAbs
 
@@ -36,7 +36,7 @@ class InstallDialog(DialogAbs):
     def __init__(self, installer, parent=None):
         super().__init__(parent)
         self.setWindowTitle(lang.Dialogs.install_core_title)
-        self.setStyleSheet(DARK_STYLESHEET)
+        self.setStyleSheet(TEMPLATE_STYLE)
         self.setMinimumSize(400, 300)
         self.installer = installer
         self.installTryCount = 0

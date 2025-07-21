@@ -44,6 +44,7 @@ class ExpandablePanel(QWidget):
         self.max_size = max
         self.position_behavior = 0
         self.event_behavior = 0
+        self.widgets = []
 
         if direction in ["left", "right"]:
             self.setFixedWidth(min)
@@ -53,7 +54,6 @@ class ExpandablePanel(QWidget):
         self.mask = ExpandableMask(parent.centralWidget if hasattr(parent, 'centralWidget') else parent, self)
         self._update_mask_geometry()
 
-        self.widgets = []
 
         self.animation = QPropertyAnimation(self.mask, b"geometry")
         self.animation.setDuration(150)
@@ -67,8 +67,7 @@ class ExpandablePanel(QWidget):
         if self._isOutWidget:
             rect.setHeight(self.mask.height())
             rect.setWidth(self.mask.width())
-            self.mask.setGeometry(rect)
-        else: self.mask.setGeometry(rect)
+        self.mask.setGeometry(rect)
 
     def _update_panel_geometry(self, rect):
         if not self._isOutWidget:
@@ -76,12 +75,11 @@ class ExpandablePanel(QWidget):
                 self.setFixedWidth(rect.width())
             else:
                 self.setFixedHeight(rect.height())
+        for widget in self.widgets:
+            widget.setSizeMode(rect, self.direction)
 
     def resizeEvent(self, event):
-        if self._isExpanded:
-            self._update_mask_geometry()
-        else:
-            self._update_mask_geometry()
+        self._update_mask_geometry()
         if self.direction in ["left", "right"]:
             self.mask.setFixedHeight(self.height())
         else:
@@ -96,7 +94,7 @@ class ExpandablePanel(QWidget):
         super().moveEvent(event)
 
     def addWidget(self, wid):
-        wid.setCompactMode(True)
+        wid.setSizeMode(self.size(), self.direction)
         self.widgets.append(wid)
         self.mask.layout.addWidget(wid)
 
@@ -105,8 +103,6 @@ class ExpandablePanel(QWidget):
             return
 
         self._isExpanded = True
-        for widget in self.widgets:
-            widget.setCompactMode(False)
 
         panel_geo = self.geometry()
         if self.direction == "right":
@@ -147,8 +143,6 @@ class ExpandablePanel(QWidget):
             return
 
         self._isExpanded = False
-        for widget in self.widgets:
-            widget.setCompactMode(True)
 
         panel_geo = self.geometry()
         if self.direction == "right":

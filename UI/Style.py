@@ -1,57 +1,11 @@
-dark_style = """
-QLabel {
-    color: white;
-}
-#settingsArea {
-    color: #E0E0E0;
-    background-color: #1E1E1E;
-}
-QPushButton {
-    color: white;
-    background-color: rgb(75, 75, 75);
-    border: 1px solid rgb(90, 90, 90);
-    border-radius: 3px;
-}
-QLineEdit, QComboBox, QSpinBox {
-    color: white;
-    background-color: #1E1E1E;
-}
-QGroupBox {
-    color: white;
-}
-QPushButton:hover {
-    border: 1px solid #0078D7;
-}
-QPushButton#expandedPanelButton {
-    background-color: rgb(75, 75, 75);
-    border: 1px solid rgb(90, 90, 90);
-    border-radius: 3px;
-}
-QPushButton#expandedPanelButton:hover {
-    border: 1px solid #0078D7;
-}
-"""
-
-DARK_STYLESHEET = """
+TEMPLATE_STYLE = """
     * {
         color: #E0E0E0;
-        background-color: #1E1E1E;
+        background-color: #121212;
         font-family: 'Segoe UI', Arial, sans-serif;
         font-size: 9pt;
     }
-    QPushButton#stop {
-        background-color: #D32F2F;
-        color: white;
-        border: none;
-        padding: 8px 16px;
-        border-radius: 4px;
-    }
-    QPushButton#stop:hover {
-        background-color: #B71C1C;
-    }
-    QPushButton#stop:pressed {
-        background-color: #8E0000;
-    }
+
     QWidget {
         background-color: transparent;
         border: none;
@@ -91,7 +45,7 @@ DARK_STYLESHEET = """
     }
 
     QPushButton {
-        background-color: #0078D7;
+        background-color: #121212;
         color: #FFFFFF;
         border: none;
         border-radius: 4px;
@@ -100,16 +54,81 @@ DARK_STYLESHEET = """
     }
 
     QPushButton:hover {
-        background-color: #1C97EA;
+        background-color: #171717;
     }
 
     QPushButton:pressed {
-        background-color: #005A9E;
+        background-color: #2e2e2e;
     }
 
     QPushButton:disabled {
-        background-color: #3F3F46;
+        background-color: #090909;
         color: #7F7F7F;
+    }
+    
+    QPushButton:focus { 
+        outline: none;
+    }
+    
+    QPushButton#stop {
+        background-color: #D32F2F;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+    }
+    
+    QPushButton#stop:hover {
+        background-color: #B71C1C;
+    }
+    
+    QPushButton#stop:pressed {
+        background-color: #8E0000;
+    }
+    
+    QPushButton#SettingsButton {
+        background-color: rgba(40, 40, 40, 230);
+        border-radius: 4px;
+    }
+    
+    QPushButton#SettingsButton:hover {
+        background-color: rgba(40, 40, 40, 150);
+    }
+    
+    QPushButton#SelectionButton {
+        background-color: rgba(40, 40, 40, 230);
+        border: none;
+        border-radius: 4px;
+    }
+    
+    QPushButton#SelectionButton:hover {
+        background-color: rgba(40, 40, 40, 150);
+    }
+    
+    QPushButton#SelectionButton:checked {
+        border-bottom: 2px solid white;
+        color: white;
+    }
+    
+    QPushButton#NavigationPanelButton {
+        background-color: transparent;
+        color: white;
+        border: none;
+        border-radius: 4px;
+    }
+    
+    QPushButton#NavigationPanelButton:hover {
+        background-color: rgba(40, 40, 40, 250);
+    }
+    
+    QPushButton#SettingsTabButton {
+        background-color: rgba(40, 40, 40, 230);
+        color: white;
+        border: none;
+    }
+    
+    QPushButton#SettingsTabButton:hover {
+        background-color: rgba(40, 40, 40, 150);
     }
 
     QPushButton#secondary {

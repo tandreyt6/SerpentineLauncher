@@ -1,7 +1,11 @@
 import ctypes
 import os
+import subprocess
+import traceback
+
 import psutil
 import win32con
+import win32console
 import win32gui
 from PyQt6.QtWidgets import *
 from PyQt6.QtCore import *
@@ -12,17 +16,32 @@ from UI.elements.HtmlViewer import AboutDialog
 from UI.elements.TextSlider import SliderTicksLables
 from UI.elements.buttons import AnimatedToggle
 from UI.windows import windowAbs
-from func import settings, memory
+from func import settings, memory, Console
 from UI.translate import lang
+import build_info
+from func.GitUpdater import get_latest_release_tag, download_updater_exe, get_latest_release_tag_for_launcher_version, download_with_progress
 
-CONSOLE_WINDOW = ctypes.windll.kernel32.GetConsoleWindow()
+THIS_VERSION = build_info.BUILD_VERSION
+
+if os.path.exists(os.getcwd() + "/updater.exe"):
+    process = subprocess.Popen(
+                [os.getcwd() + "/updater.exe", "-v", THIS_VERSION],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+    process.wait()
+    stdout, stderr = process.communicate()
+    print(stdout)
+    UPDATER_VERSION = stdout.split("\n")[0]
+else: UPDATER_VERSION = "X"
 
 class SettingsWidget(QWidget):
-    def __init__(self, parent=None, css="", settings={}, main=None):
+    def __init__(self, parent=None, main=None):
         super().__init__(parent)
+        self._startLauncherAfterUpdate = False
+        self._SilentNeedUpdate = (False, False)
         self.java_input: QLineEdit = None
-        self.setStyleSheet(css)
-        self.css = css
         self.main = main
         main_layout = QHBoxLayout(self)
 
@@ -63,8 +82,84 @@ class SettingsWidget(QWidget):
         if settings.get("javaMemory", 8000) != self.MemorySpin.value():
             settings.put("javaMemory", self.MemorySpin.value())
 
+    def checkUpdateForApp(self, silent: bool = False):
+        ver = get_latest_release_tag()
+        if ver is None:
+            if not silent:
+                print("Ошибка получения версии с сервера")
+            return
+
+        LauncherVersion = THIS_VERSION if THIS_VERSION != "X" else "-1"
+        UpdaterVersion = UPDATER_VERSION
+
+        try:
+            latestLauncher = int(ver[1:].split(".")[0])
+            latestUpdater = int(ver[1:].split(".")[1])
+        except Exception as e:
+            if not silent:
+                print("Ошибка разбора версии:", e)
+            return
+
+        currentLauncher = int(LauncherVersion) if LauncherVersion.isdigit() else -1
+        currentUpdater = int(UpdaterVersion) if UpdaterVersion.isdigit() else -1
+
+        launcher_update_needed = latestLauncher > currentLauncher
+        updater_update_needed = latestUpdater > currentUpdater
+
+        if not launcher_update_needed:
+            if not silent:
+                windowAbs.information(
+                    self, "", lang.Dialogs.this_latest_version,
+                    height=140, width=350, btn_text=lang.Dialogs.ok
+                )
+            return
+
+        if settings.get("silentUpdate", True) and silent:
+            self._SilentNeedUpdate = (launcher_update_needed, updater_update_needed)
+            return
+
+        if not silent:
+            d = windowAbs.question(
+                self, "", lang.Dialogs.need_update_for_app.format(version=ver),
+                height=140, width=350,
+                yes_text=lang.Dialogs.yes, no_text=lang.Dialogs.no
+            )
+            if not d:
+                return
+
+            if len(self.main.builds_page.allGameThreads) != 0:
+                q = windowAbs.question(
+                    self, "", lang.Dialogs.need_close_all_for_update,
+                    height=140, width=350,
+                    yes_text=lang.Dialogs.yes, no_text=lang.Dialogs.no
+                )
+                if not q:
+                    return
+                self.main.killAllClients()
+            self._startLauncherAfterUpdate = True
+            self.showConsole()
+            self.main.close()
+
+    def download_update_zip_for_later_installation(self, tag, release):
+        if tag is None:
+            return
+
+        assets = {a["name"]: a["browser_download_url"] for a in release["assets"]}
+        if "update.zip" not in assets:
+            return
+
+        zip_url = assets["update.zip"]
+        zip_path = os.path.join(os.getcwd(), "update.zip")
+
+        try:
+            download_with_progress(zip_url, zip_path)
+        except Exception:
+            if os.path.exists(zip_path):
+                os.remove(zip_path)
+
     def create_tab_button(self, name, layout):
         button = QPushButton(name)
+        button.setObjectName("SettingsTabButton")
         button.setCheckable(True)
         button.clicked.connect(lambda: self.display_settings(name))
         layout.addWidget(button)
@@ -89,6 +184,12 @@ class SettingsWidget(QWidget):
         self.langTitle.setText(lang.Dialogs.restart_required)
         self.langTitle.setFixedHeight(20)
 
+    def setAutoUpdate(self, checked):
+        settings.put("autoUpdate", self.autoupdate_chechbox.isChecked())
+        self.silentUpdate_chechbox.setChecked(self.silentUpdate_chechbox.isChecked() and self.autoupdate_chechbox.isChecked())
+        self.silentUpdate_chechbox.setEnabled(self.autoupdate_chechbox.isChecked())
+        settings.put("silentUpdate", self.silentUpdate_chechbox.isChecked() and self.autoupdate_chechbox.isChecked())
+
     def add_general_settings(self):
         widget = QWidget()
         layout = QFormLayout(widget)
@@ -107,36 +208,53 @@ class SettingsWidget(QWidget):
         layout.addRow(QLabel(lang.Dialogs.language_label), self.language_combo)
         self.language_combo.currentTextChanged.connect(self.langChange)
 
+        self.autoupdate_chechbox = AnimatedToggle()
+        self.autoupdate_chechbox.setChecked(settings.get("checkUpdates", True))
+        self.autoupdate_chechbox.toggled.connect(self.setAutoUpdate)
+        layout.addRow(self.autoupdate_chechbox, QLabel(lang.Dialogs.check_auto_update))
+
+        self.silentUpdate_chechbox = AnimatedToggle()
+        self.silentUpdate_chechbox.setChecked(settings.get("silentUpdate", True))
+        self.silentUpdate_chechbox.toggled.connect(self.setAutoUpdate)
+        layout.addRow(self.silentUpdate_chechbox, QLabel(lang.Dialogs.allow_silent_update))
+
+        self.check_updates_btn = QPushButton(lang.Elements.check_updates)
+        self.check_updates_btn.setObjectName("SettingsButton")
+        self.check_updates_btn.clicked.connect(self.checkUpdateForApp)
+        layout.addRow(self.check_updates_btn)
+
         h0 = QHBoxLayout()
         self.show_console = QPushButton(lang.Elements.show_console)
+        self.show_console.setObjectName("SettingsButton")
         self.show_console.clicked.connect(self.showConsole)
         h0.addWidget(self.show_console)
         self.hide_console = QPushButton(lang.Elements.hide_console)
+        self.hide_console.setObjectName("SettingsButton")
         self.hide_console.clicked.connect(self.hideConsole)
         h0.addWidget(self.hide_console)
         layout.addRow(h0)
 
         self.open_launcher_folder = QPushButton(lang.Elements.open_launcher_folder)
+        self.open_launcher_folder.setObjectName("SettingsButton")
         self.open_launcher_folder.clicked.connect(self.openLauncherFolder)
         layout.addRow(self.open_launcher_folder)
 
         self.about_changes_btn = QPushButton(lang.Elements.about_changes_title)
+        self.about_changes_btn.setObjectName("SettingsButton")
         self.about_changes_btn.clicked.connect(self.openAboutChanges)
         layout.addRow(self.about_changes_btn)
 
         self.settings_stack.addWidget(widget)
 
     def showConsole(self):
-        if CONSOLE_WINDOW:
-            win32gui.ShowWindow(CONSOLE_WINDOW, win32con.SW_SHOW)
+        Console.show()
 
     def hideConsole(self):
         if not getattr(sys, 'frozen', False):
             windowAbs.critical(None, lang.Dialogs.impossible, lang.Dialogs.error_debug_hide_console,
                                btn_text=lang.Dialogs.ok, height=140)
             return
-        if CONSOLE_WINDOW:
-            win32gui.ShowWindow(CONSOLE_WINDOW, win32con.SW_HIDE)
+        Console.hide()
 
     def openLauncherFolder(self):
         os.startfile(os.getcwd())
@@ -167,6 +285,7 @@ class SettingsWidget(QWidget):
         self.java_input.setText(str(settings.get("javaPath", "java")))
         self.java_input.setFixedHeight(30)
         self.select_java = QPushButton(lang.Dialogs.select)
+        self.select_java.setObjectName("SettingsButton")
         self.select_java.clicked.connect(self.selectJavaDil)
         self.select_java.setFixedHeight(30)
         layout.addRow(self.javaHelp)
@@ -181,11 +300,13 @@ class SettingsWidget(QWidget):
         self.position_button_group.setExclusive(True)
 
         btn_on_top = QPushButton(lang.Dialogs.panel_position_on_top)
+        btn_on_top.setObjectName("SelectionButton")
         btn_on_top.setCheckable(True)
         self.position_button_group.addButton(btn_on_top, 0)
         position_layout.addWidget(btn_on_top)
 
         btn_shift = QPushButton(lang.Dialogs.panel_position_shift)
+        btn_shift.setObjectName("SelectionButton")
         btn_shift.setCheckable(True)
         self.position_button_group.addButton(btn_shift, 1)
         position_layout.addWidget(btn_shift)
@@ -196,15 +317,18 @@ class SettingsWidget(QWidget):
 
         btn_standard = QPushButton(lang.Dialogs.panel_state_standard)
         btn_standard.setCheckable(True)
+        btn_standard.setObjectName("SelectionButton")
         self.state_button_group.addButton(btn_standard, 0)
         state_layout.addWidget(btn_standard)
 
         btn_always_expanded = QPushButton(lang.Dialogs.panel_state_always_expanded)
+        btn_always_expanded.setObjectName("SelectionButton")
         btn_always_expanded.setCheckable(True)
         self.state_button_group.addButton(btn_always_expanded, 1)
         state_layout.addWidget(btn_always_expanded)
 
         btn_always_collapsed = QPushButton(lang.Dialogs.panel_state_always_collapsed)
+        btn_always_collapsed.setObjectName("SelectionButton")
         btn_always_collapsed.setCheckable(True)
         self.state_button_group.addButton(btn_always_collapsed, 2)
         state_layout.addWidget(btn_always_collapsed)
@@ -222,16 +346,19 @@ class SettingsWidget(QWidget):
         self.double_click_button_group.setExclusive(True)
 
         btn_launch = QPushButton(lang.Dialogs.double_click_launch)
+        btn_launch.setObjectName("SelectionButton")
         btn_launch.setCheckable(True)
         self.double_click_button_group.addButton(btn_launch, 0)
         double_click_layout.addWidget(btn_launch)
 
         btn_info = QPushButton(lang.Dialogs.double_click_info)
+        btn_info.setObjectName("SelectionButton")
         btn_info.setCheckable(True)
         self.double_click_button_group.addButton(btn_info, 1)
         double_click_layout.addWidget(btn_info)
 
         btn_settings = QPushButton(lang.Dialogs.double_click_settings)
+        btn_settings.setObjectName("SelectionButton")
         btn_settings.setCheckable(True)
         self.double_click_button_group.addButton(btn_settings, 2)
         double_click_layout.addWidget(btn_settings)
@@ -289,7 +416,6 @@ class SettingsWidget(QWidget):
         memoryS = psutil.virtual_memory()
         memoryV = (memoryS.total / (2 ** 20))
         self.MemorySlider = SliderTicksLables()
-        self.MemorySlider.slider.setStyleSheet(self.css)
         self.MemorySlider.dlsText = lang.Dialogs.memory_suffix
         self.MemorySlider.isLeftOffset = True
         self.MemorySlider.setRange(1000, int(memoryV), 5)
@@ -308,16 +434,19 @@ class SettingsWidget(QWidget):
         self.launcher_button_group.setExclusive(True)
 
         btn_hide = QPushButton(lang.Dialogs.launcher_hide_completely)
+        btn_hide.setObjectName("SelectionButton")
         btn_hide.setCheckable(True)
         self.launcher_button_group.addButton(btn_hide, 0)
         launcher_layout.addWidget(btn_hide)
 
         btn_minimize = QPushButton(lang.Dialogs.launcher_minimize_to_taskbar)
+        btn_minimize.setObjectName("SelectionButton")
         btn_minimize.setCheckable(True)
         self.launcher_button_group.addButton(btn_minimize, 1)
         launcher_layout.addWidget(btn_minimize)
 
         btn_nothing = QPushButton(lang.Dialogs.launcher_do_nothing)
+        btn_nothing.setObjectName("SelectionButton")
         btn_nothing.setCheckable(True)
         self.launcher_button_group.addButton(btn_nothing, 2)
         launcher_layout.addWidget(btn_nothing)
@@ -343,120 +472,142 @@ class SettingsWidget(QWidget):
 
         self.settings_stack.addWidget(widget)
 
+    def setAboutHtml(self):
+        about_info_template = """<!DOCTYPE html>
+                <html lang="ru">
+                <head>
+                  <meta charset="UTF-8" />
+                  <meta name="viewport" content="width=device-width, initial-scale=1" />
+                  <title>{about_title}</title>
+                  <style>
+                    body {{
+                      margin: 0;
+                      background-color: #0f0f0f;
+                      color: #ffffff;
+                      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                      display: flex;
+                      flex-direction: column;
+                      align-items: center;
+                      padding: 24px;
+                      min-height: 100vh;
+                    }}
+                    .container {{
+                      max-width: 768px;
+                      width: 100%;
+                      padding: 32px 0;
+                    }}
+                    h1 {{
+                      font-size: 1.75rem;
+                      font-weight: 600;
+                      margin-bottom: 12px;
+                      text-align: center;
+                      color: #ffffff;
+                    }}
+                    p.description {{
+                      color: #ffffff;
+                      text-align: center;
+                      margin-bottom: 24px;
+                      font-size: 0.9rem;
+                    }}
+                    h2 {{
+                      font-size: 1.125rem;
+                      font-weight: 500;
+                      margin-bottom: 8px;
+                      color: #ffffff;
+                    }}
+                    ul {{
+                      list-style: none;
+                      padding-left: 0;
+                      margin-top: 0;
+                      margin-bottom: 24px;
+                      color: #ffffff;
+                      font-size: 0.9rem;
+                      line-height: 1.5;
+                    }}
+                    ul li {{
+                      margin-bottom: 8px;
+                      display: flex;
+                      align-items: flex-start;
+                      gap: 8px;
+                    }}
+                    ul li span.key {{
+                      min-width: 140px;
+                      display: inline-block;
+                      font-weight: 600;
+                      color: #ffffff;
+                    }}
+                    .grid {{
+                      display: grid;
+                      grid-template-columns: 1fr;
+                      gap: 24px;
+                    }}
+                    @media (min-width: 640px) {{
+                      .grid {{
+                        grid-template-columns: repeat(2, 1fr);
+                      }}
+                    }}
+                    .footer {{
+                      padding-top: 12px;
+                      margin-top: 24px;
+                      font-size: 0.75rem;
+                      color: #ffffff;
+                      text-align: center;
+                    }}
+                  </style>
+                </head>
+                <body>
+                  <div class="container">
+                    <h1>{about_title}</h1>
+                    <p class="description">{description}</p>
+                    <div class="grid">
+                      <section>
+                        <h2>{section_main}</h2>
+                        <ul>
+                          <li><span class="key">{lang_impl}</span> Python</li>
+                          <li><span class="key">{version}</span> v{slv}.{updv}</li>
+                          <li><span class="key">{auto_update}</span> {update_value}</li>
+                        </ul>
+                      </section>
+                      <section>
+                        <h2>{section_platforms}</h2>
+                        <ul>
+                          {platforms_html}
+                        </ul>
+                      </section>
+                      <footer class="footer">
+                        {build_date}<br />
+                        {bug_report}
+                      </footer>
+                    </div>
+                  </div>
+                </body>
+                </html>"""
+        platforms_html = '\n'.join(f'<li>{p}</li>' for p in lang.Elements.platforms)
+        about_info = about_info_template.format(
+            about_title=lang.Elements.about_title,
+            header=lang.Elements.header,
+            description=lang.Elements.description,
+            section_main=lang.Elements.section_main,
+            lang_impl=lang.Elements.lang_impl,
+            version=lang.Elements.version,
+            auto_update=lang.Elements.auto_update if settings.get("autoUpdate", True) else lang.Elements.off_auto_update,
+            update_value=lang.Elements.update_value,
+            platforms_html=platforms_html,
+            section_platforms=lang.Elements.section_platforms,
+            section_interface=lang.Elements.section_interface,
+            build_date=lang.Elements.build_date.format(build_date=build_info.BUILD_DATE),
+            bug_report=lang.Elements.bug_report,
+            updv=UPDATER_VERSION,
+            slv=THIS_VERSION
+        )
+        self.about_text.setHtml(about_info)
+
     def add_about_info(self):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
         self.about_text = QTextBrowser()
         self.about_text.setReadOnly(True)
-        self.about_text.setStyleSheet(self.css)
-        about_info = f"""<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{
-            font-family: 'Segoe UI', Arial, sans-serif;
-            font-size: 8pt;
-            color: #E0E0E0;
-            background-color: #1E1E1E;
-            margin: 0;
-            padding: 10px;
-        }}
-        .container {{
-            max-width: 300px;
-            margin: 0 auto;
-            background-color: #252526;
-            border: 1px solid #3F3F46;
-            border-radius: 6px;
-            padding: 12px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-        }}
-        .header {{
-            text-align: center;
-            padding-bottom: 8px;
-            border-bottom: 1px solid #3F3F46;
-        }}
-        h1 {{
-            font-size: 14px;
-            font-weight: bold;
-            color: #FFFFFF;
-            margin: 0;
-        }}
-        .version {{
-            font-size: 9pt;
-            color: #A0A0A0;
-            margin: 4px 0;
-        }}
-        .author {{
-            font-size: 10pt;
-            font-weight: bold;
-            color: #0078D7;
-            transition: color 0.3s ease;
-        }}
-        .author:hover {{
-            color: #1C97EA;
-        }}
-        .content {{
-            margin-top: 8px;
-        }}
-        .info-block {{
-            background-color: #3F3F46;
-            border-radius: 4px;
-            padding: 8px;
-            margin-bottom: 8px;
-            transition: transform 0.2s ease;
-        }}
-        .info-block:hover {{
-            transform: translateY(-1px);
-        }}
-        .info-block p {{
-            margin: 0;
-            line-height: 1.4;
-            font-size: 8pt;
-            color: #E0E0E0;
-        }}
-        .highlight {{
-            background-color: #0078D7;
-            color: #FFFFFF;
-            padding: 6px;
-            border-radius: 4px;
-            font-weight: bold;
-            margin: 8px 0;
-            transition: background-color 0.3s ease;
-        }}
-        .highlight:hover {{
-            background-color: #1C97EA;
-        }}
-        .footer {{
-            text-align: center;
-            font-size: 7pt;
-            color: #A0A0A0;
-            padding-top: 8px;
-            border-top: 1px solid #3F3F46;
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>{lang.Dialogs.about_title}</h1>
-            <div class="version">{lang.Dialogs.about_version}</div>
-            <div class="author">{lang.Dialogs.about_author}</div>
-        </div>
-        <div class="content">
-            <div class="info-block">
-                <p>{lang.Dialogs.about_description}</p>
-            </div>
-            <div class="info-block">
-                <p class="highlight">{lang.Dialogs.about_new_in_version}</p>
-                <p>{lang.Dialogs.about_new_features}</p>
-            </div>
-        </div>
-        <div class="footer">{lang.Dialogs.about_copyright}</div>
-    </div>
-</body>
-</html>"""
-
-        self.about_text.setHtml(about_info)
+        self.setAboutHtml()
         layout.addWidget(self.about_text)
         self.settings_stack.addWidget(widget)

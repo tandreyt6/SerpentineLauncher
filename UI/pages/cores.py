@@ -6,7 +6,7 @@ from PyQt6.QtGui import QFont, QAction
 from PyQt6.QtWidgets import QWidget, QLabel, QPushButton, QHBoxLayout, QSizePolicy, QFrame, QVBoxLayout, QScrollArea, \
     QToolButton, QMenu, QLineEdit
 
-from UI.Style import DARK_STYLESHEET
+from UI.Style import TEMPLATE_STYLE
 from UI.translate import lang
 from UI.windows import windowAbs
 
@@ -68,7 +68,7 @@ class MinecraftVersionsPage(QWidget):
         super().__init__(parent)
         self.launcher = launcher
         self.setObjectName("container")
-        self.setStyleSheet(DARK_STYLESHEET)
+        self.setStyleSheet(TEMPLATE_STYLE)
         self.cores = []
         self.setup_ui()
 
@@ -198,7 +198,7 @@ class MinecraftVersionsPage(QWidget):
         hl.addStretch()
 
         installed = self.is_core_installed(build)
-        status = QLabel("Установлено" if installed else "Не установлено")
+        status = QLabel(lang.Elements.installed if installed else lang.Elements.not_installed)
         status.setStyleSheet("color: #aaa; font-size: 9pt;")
         hl.addWidget(status)
 

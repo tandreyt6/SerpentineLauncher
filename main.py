@@ -1,3 +1,8 @@
+import win32console
+
+from UI.StartWithLauncherDialog import FirstRunDialog
+from UI.elements.TabBlocker import TabBlocker
+
 print("import libs...")
 import logging
 import os
@@ -9,11 +14,14 @@ from datetime import datetime
 from PyQt6.QtGui import QIcon
 
 from UI.windows import windowAbs
-from func import settings, ArgsParser
+from func import settings, ArgsParser, Console
 from UI import translate
 import win32gui, win32con
 
 from UI.elements import HtmlViewer
+from UI.Style import TEMPLATE_STYLE
+
+import ctypes
 
 from PyQt6.QtWidgets import QApplication
 app = QApplication(sys.argv)
@@ -21,9 +29,12 @@ app = QApplication(sys.argv)
 print("Check settings...")
 isSettingsExist = settings.load()
 if not isSettingsExist:
-    q = windowAbs.question(None, "", "Use Russian language in the launcher?\nИспользовать русский язык в лаунчере?", height=150,
-                           yes_text="Yes/Да", no_text="No/Нет")
-    settings.put("lang", "ru" if q else "en")
+    if sys.platform == "win32" and getattr(sys, 'frozen', False) and not ArgsParser.msg['debug']:
+        Console.minimize()
+    print("Settings not exist.\nInit First setup window...")
+    dlg = FirstRunDialog()
+    dlg.exec()
+print("Done.")
 if settings.get('lang', 'ru') == "en":
     translate.lang = translate.EN
 else:
@@ -31,7 +42,6 @@ else:
 
 HtmlViewer.lang = translate.lang
 
-from UI.Style import dark_style
 from UI.windows.Launcher import Window
 from func.installer import MinecraftInstaller, FabricInstaller, ForgeInstaller, QuiltInstaller
 import minecraft_launcher_lib
@@ -44,8 +54,6 @@ import ctypes.wintypes
 user32 = ctypes.windll.user32
 
 print("Loading launcher...")
-
-console_window = ctypes.windll.kernel32.GetConsoleWindow()
 
 class ErrorOnlyFileHandler(logging.FileHandler):
     def __init__(self, filename, mode='a', encoding=None, delay=False):
@@ -214,17 +222,13 @@ if instance.is_running() or ArgsParser.msg.get('nostart'):
     print("App is running...\nexecute window...")
     sys.exit(0)
 
-if sys.platform == "win32" and getattr(sys, 'frozen', False) and not ArgsParser.msg['debug']:
-    if console_window:
-        win32gui.ShowWindow(console_window, win32con.SW_HIDE)
-
 ArgsActions.check()
 
-def handle_message(msg):
+def handle_message(msg, b=True):
     data = json.loads(msg)
     if not ArgsParser.msg.get('nogui') and win.launcherWindow.builds_page.canCloseLauncherWithBuild:
         win.launcherWindow.builds_page.canCloseLauncherWithBuild = False
-    if not data.get('nogui'):
+    if not data.get('nogui') and b:
         win.launcherWindow.showNormal()
         win.launcherWindow.raise_()
         win.launcherWindow.activateWindow()
@@ -244,18 +248,32 @@ instance.message_received.connect(handle_message)
 print("Init UI...")
 win = Main()
 
+print("Raise window...")
+win.launcherWindow.showNormal()
+win.launcherWindow.raise_()
+win.launcherWindow.activateWindow()
+hwnd = int(win.launcherWindow.winId())
+bring_window_foreground(hwnd)
+
+_canHideConsole = sys.platform == "win32" and getattr(sys, 'frozen', False) and not ArgsParser.msg['debug']
+print("Hide console:", _canHideConsole)
+if _canHideConsole:
+    Console.hide()
+
 app.setWindowIcon(QIcon(":Minecraft.png"))
-app.setStyleSheet(dark_style)
+app.setStyleSheet(TEMPLATE_STYLE)
+
+if settings.get("checkUpdates", True):
+    win.launcherWindow.settings_page.checkUpdateForApp(True)
+
+blocker = TabBlocker()
+app.installEventFilter(blocker)
 
 win.launcherWindow.builds_page.canCloseLauncherWithBuild = ArgsParser.msg.get('nogui')
 
-handle_message(json.dumps(ArgsParser.msg))
+handle_message(json.dumps(ArgsParser.msg), False)
 
-if not isSettingsExist:
-    q = windowAbs.question(win.launcherWindow, "", translate.lang.Dialogs.about_changes_question, height=150,
-                           yes_text=translate.lang.Dialogs.yes, no_text=translate.lang.Dialogs.no)
-    if q:
-        dil = HtmlViewer.AboutDialog(win.launcherWindow)
-        dil.exec()
+if ArgsParser.msg.get('with_update'):
+    win.launcherWindow.showUpdateSuccessfullInfo()
 
 app.exec()

@@ -28,7 +28,7 @@ class SliderTicksLables(QWidget):
 
         rect = self.slider.geometry()
         painter = QPainter(self)
-        painter.setPen(QPen(QColor("#00e1ff")))
+        painter.setPen(QPen(QColor("#fff")))
 
         font_metrics = QFontMetrics(self.slider.font())
         style_option = QStyleOptionSlider()
