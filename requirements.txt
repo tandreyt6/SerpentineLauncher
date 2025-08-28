@@ -1,0 +1,6 @@
+PyQt6
+pyrinth
+requests
+psutil
+pywin32
+minecraft_launcher_lib-0.1.0-py3-none-any.whl
