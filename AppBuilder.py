@@ -9,7 +9,7 @@ os.chdir(script_dir)
 
 build_date = datetime.now().strftime("%Y-%m-%d")
 with open("build_info.py", "w", encoding="utf-8") as f:
-    f.write(f'BUILD_DATE = "{build_date}"\nBUILD_NAME = "SerpentineLauncher"\nBUILD_VERSION = "3,"')
+    f.write(f'BUILD_DATE = "{build_date}"\nBUILD_NAME = "SerpentineLauncher"\nBUILD_VERSION = "3"')
 
 print(f"[INFO] Build data: {build_date} -> build_info.py")
 
