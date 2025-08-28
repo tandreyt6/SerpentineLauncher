@@ -50,8 +50,13 @@ class ExpandablePanel(QWidget):
             self.setFixedWidth(min)
         else:
             self.setFixedHeight(min)
+        if hasattr(parent, 'centralWidget') and callable(parent.centralWidget):
+            self.mask = ExpandableMask(parent.centralWidget(), self)
+        elif hasattr(parent, 'centralWidget'):
+            self.mask = ExpandableMask(parent.centralWidget, self)
+        else:
+            self.mask = ExpandableMask(parent, self)
 
-        self.mask = ExpandableMask(parent.centralWidget if hasattr(parent, 'centralWidget') else parent, self)
         self._update_mask_geometry()
 
 
@@ -64,6 +69,7 @@ class ExpandablePanel(QWidget):
 
     def _update_mask_geometry(self):
         rect = self.geometry()
+        rect.setY(rect.y() + 30)
         if self._isOutWidget:
             rect.setHeight(self.mask.height())
             rect.setWidth(self.mask.width())
@@ -105,6 +111,7 @@ class ExpandablePanel(QWidget):
         self._isExpanded = True
 
         panel_geo = self.geometry()
+        panel_geo.setY(panel_geo.y() + 30)
         if self.direction == "right":
             end_geo = QRect(panel_geo.x(), panel_geo.y(),
                             self.max_size, panel_geo.height())
@@ -123,8 +130,9 @@ class ExpandablePanel(QWidget):
             self._shift_sibling_widgets(end_geo)
 
         if animate:
+            r = self.mask.geometry()
             self.animation.stop()
-            self.animation.setStartValue(self.mask.geometry())
+            self.animation.setStartValue(r)
             self.animation.setEndValue(end_geo)
             self.animation.start()
         else:
@@ -145,6 +153,7 @@ class ExpandablePanel(QWidget):
         self._isExpanded = False
 
         panel_geo = self.geometry()
+        panel_geo.setY(panel_geo.y() + 30)
         if self.direction == "right":
             end_geo = QRect(panel_geo.x(), panel_geo.y(),
                             self.min_size, panel_geo.height())

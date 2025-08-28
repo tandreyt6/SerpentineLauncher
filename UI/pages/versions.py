@@ -1,4 +1,5 @@
 import signal
+import sys
 
 from PyQt6.QtGui import QIcon, QPixmap, QFont
 from PyQt6.QtWidgets import (
@@ -304,7 +305,7 @@ class BuildsPage(QWidget):
         self.download_launcher.clicked.connect(lambda: self.show_temp_message(">:)))))))))))))))))"))
 
     def createShotcut(self):
-        create_shortcut(os.getcwd()+"/ViperLauncher.exe",
+        create_shortcut(sys.executable,
             self.build_manager.get_build_path(self.build_manager.get_build(self.selected_build_name))+"/"+self.selected_build_name+".lnk",
                         arguments=f"--start-with-build-name {self.selected_build_name} --nogui")
         os.startfile(self.build_manager.get_build_path(self.build_manager.get_build(self.selected_build_name)))
@@ -347,6 +348,9 @@ class BuildsPage(QWidget):
                     card.setStyleSheet("QFrame#build_card {border: 2px solid #0078D7; border-radius: 4px;}")
                 else:
                     card.setStyleSheet("QFrame#build_card {border: none;}")
+
+    def buildIsRunning(self, build_name) -> bool:
+        return build_name in self.running_threads
 
     def stop_build(self, name, nogui=False):
         if name in self.running_threads:

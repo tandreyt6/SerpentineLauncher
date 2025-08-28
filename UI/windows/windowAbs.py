@@ -6,6 +6,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QPoint, QRect, QEvent, QVariantAnimation, QEasingCurve, QTimer, QSize, QPointF, QRectF
 from PyQt6.QtGui import QMouseEvent, QResizeEvent, QAction, QCursor, QPainterPath, QPainter, QColor, QBrush, QPen
 
+from UI.windows.WindowsAbstractWindow import WindowsFramelessWindow
+
 
 class CustomTitleBar(QFrame):
     def __init__(self, parent):
@@ -199,191 +201,12 @@ class WindowManager:
                 window.outline_widget.update_position()
 
 
-class WindowAbs(QMainWindow):
+class WindowAbs(WindowsFramelessWindow):
     def __init__(self):
         super().__init__()
-        self.setMinimumWidth(900)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-
-        self.outline_widget = OutlineWidget(None, WindowManager.instance())
-        self.outline_widget.parent_window = self
-        self.outline_widget.update_position()
-        self.outline_widget.hide()
-
-        WindowManager.instance().add_window(self)
-
-        self.title_bar = CustomTitleBar(self)
-        self.setMenuWidget(self.title_bar)
-        self.pointMode = None
-
-        self.corner_radius = 10
-        self.background_color = QColor(18, 18, 18)
-        self.border_color = QColor(80, 80, 80)
-        self.border_width = 2
-
-        self.centralWidget = QWidget()
-        self.centralWidget.setObjectName("contentArea")
-        super().setCentralWidget(self.centralWidget)
-        self.centralLayout = QHBoxLayout(self.centralWidget)
-        self.centralLayout.setContentsMargins(0, 0, 0, 0)
-        self.selectCentralWidget = QWidget()
-
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.checkMousePos)
-        self.timer.start(10)
-
-    def setCentralWidget(self, widget):
-        if self.selectCentralWidget:
-            self.selectCentralWidget.deleteLater()
-        self.selectCentralWidget = widget
-        self.centralLayout.addWidget(self.selectCentralWidget)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        rect = QRectF(self.rect())
-        radius = self.corner_radius
-
-        path = QPainterPath()
-        path.moveTo(rect.left(), rect.top() + radius)
-        path.quadTo(rect.left(), rect.top(), rect.left() + radius, rect.top())
-        path.lineTo(rect.right() - radius, rect.top())
-        path.quadTo(rect.right(), rect.top(), rect.right(), rect.top() + radius)
-        path.lineTo(rect.right(), rect.bottom() - radius)
-        path.quadTo(rect.right(), rect.bottom(), rect.right() - radius, rect.bottom())
-        path.lineTo(rect.left() + radius, rect.bottom())
-        path.quadTo(rect.left(), rect.bottom(), rect.left(), rect.bottom() - radius)
-        path.lineTo(rect.left(), rect.top() + radius)
-
-        painter.setBrush(QBrush(self.background_color))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawPath(path)
-
-    def checkMousePos(self):
-        direct = self.getDirectionMousePos()
-        if direct in ["top_right", "bottom_left"]:
-            self.setCursor(Qt.CursorShape.SizeBDiagCursor)
-        elif direct in ["top_left", "bottom_right"]:
-            self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-        elif direct in ["right", "left"]:
-            self.setCursor(Qt.CursorShape.SizeHorCursor)
-        elif direct in ["top", "bottom"]:
-            self.setCursor(Qt.CursorShape.SizeVerCursor)
-        else:
-            self.setCursor(Qt.CursorShape.ArrowCursor)
-
-    def getDirectionMousePos(self):
-        pos = self.mapFromGlobal(QCursor.pos())
-        pointMode = None
-        if self.isMaximized():
-            return None
-        if pos.x() > self.width() - 10 and pos.y() < 10:
-            pointMode = "top_right"
-        elif pos.x() < 10 and pos.y() < 10:
-            pointMode = "top_left"
-        elif pos.y() < 10:
-            pointMode = "top"
-        elif pos.x() > self.width() - 10 and pos.y() > self.height() - 10:
-            pointMode = "bottom_right"
-        elif pos.x() < 10 and pos.y() > self.height() - 10:
-            pointMode = "bottom_left"
-        elif pos.y() > self.height() - 10:
-            pointMode = "bottom"
-        elif pos.x() > self.width() - 10:
-            pointMode = "right"
-        elif pos.x() < 10:
-            pointMode = "left"
-        return pointMode
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.pointMode = self.getDirectionMousePos()
-        super().mousePressEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        self.pointMode = None
-        super().mouseReleaseEvent(event)
-
-    def mouseMoveEvent(self, event: QMouseEvent):
-        geometry = self.geometry()
-        moveMode = ['top_right', 'top_left', 'bottom_right', 'bottom_left', 'right', 'left', 'bottom', 'top']
-        if self.pointMode in moveMode:
-            if self.pointMode == "top_right":
-                geometry.setTopRight(QCursor.pos())
-            elif self.pointMode == "top_left":
-                oldBottomRight = geometry.bottomRight()
-                geometry.setTopLeft(QCursor.pos())
-                geometry.setBottomRight(oldBottomRight)
-                min_size = self.minimumSize()
-                if min_size.isValid():
-                    min_width = max(geometry.width(), min_size.width())
-                    min_height = max(geometry.height(), min_size.height())
-                    if min_width > geometry.width() or min_height > geometry.height():
-                        width_diff = min_width - geometry.width()
-                        height_diff = min_height - geometry.height()
-                        newTopLeft = geometry.topLeft() - QPoint(width_diff, height_diff)
-                        geometry.setTopLeft(newTopLeft)
-                        geometry.setWidth(min_width)
-                        geometry.setHeight(min_height)
-            elif self.pointMode == "bottom_right":
-                geometry.setBottomRight(QCursor.pos())
-            elif self.pointMode == "bottom_left":
-                geometry.setBottomLeft(QCursor.pos())
-            elif self.pointMode == "top":
-                oldGeometry = self.geometry()
-                newTop = QCursor.pos().y()
-                geometry.setTop(newTop)
-                newHeight = geometry.height()
-                minHeight = self.minimumHeight()
-                if newHeight < minHeight:
-                    newHeight = minHeight
-                    newTop = oldGeometry.top()
-                newGeometry = QRect(oldGeometry.left(), newTop, oldGeometry.width(), newHeight)
-                geometry = newGeometry
-            elif self.pointMode == "bottom":
-                geometry.setBottom(QCursor.pos().y())
-            elif self.pointMode == "right":
-                geometry.setRight(QCursor.pos().x())
-            elif self.pointMode == "left":
-                oldGeometry = self.geometry()
-                newLeft = QCursor.pos().x()
-                geometry.setLeft(newLeft)
-                newWidth = geometry.width()
-                minWidth = self.minimumWidth()
-                if newWidth < minWidth:
-                    newWidth = minWidth
-                    newLeft = oldGeometry.left()
-                newGeometry = QRect(newLeft, oldGeometry.top(), newWidth, oldGeometry.height())
-                geometry = newGeometry
-            self.setGeometry(geometry)
-        super().mouseMoveEvent(event)
-
-    def setWindowTitle(self, title):
-        self.title_bar.title.setText(title)
-        return super().setWindowTitle(title)
-
-    def closeEvent(self, event):
-        # WindowManager.instance().remove_window(self)
-        self.outline_widget.close()
-        super().closeEvent(event)
-
-    def moveEvent(self, event):
-        super().moveEvent(event)
-        self.outline_widget.update_position()
-        WindowManager.instance().update_active_window_outline()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.outline_widget.update_position()
-        WindowManager.instance().update_active_window_outline()
-
-    def changeEvent(self, event):
-        super().changeEvent(event)
-        if event.type() == QEvent.Type.ActivationChange:
-            WindowManager.instance().update_active_window_outline()
-            self.outline_widget.update_position()
+        # self.setMinimumWidth(750)
+        # self.action_bar = CustomActionBar(self)
+        # self._titleBar.hBoxLayout.insertWidget(2, self.action_bar, 0, Qt.AlignmentFlag.AlignLeft)
 
 
 class DialogAbs(QDialog):

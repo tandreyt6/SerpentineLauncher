@@ -213,67 +213,69 @@ class Main:
     def setActiveName(self, name: str) -> None:
         self._nickname = name
 
+if __name__ == '__main__':
+    app.setApplicationName("SerpentineLauncher")
 
-app.setApplicationName("SerpentineLauncher")
+    instance = SingleInstance("minecraft_launcher_v2_key_server", json.dumps(ArgsParser.msg))
 
-instance = SingleInstance("minecraft_launcher_v2_key_server", json.dumps(ArgsParser.msg))
+    if instance.is_running() or ArgsParser.msg.get('nostart'):
+        print("App is running...\nexecute window...")
+        sys.exit(0)
 
-if instance.is_running() or ArgsParser.msg.get('nostart'):
-    print("App is running...\nexecute window...")
-    sys.exit(0)
+    ArgsActions.check()
 
-ArgsActions.check()
-
-def handle_message(msg, b=True):
-    data = json.loads(msg)
-    if not ArgsParser.msg.get('nogui') and win.launcherWindow.builds_page.canCloseLauncherWithBuild:
-        win.launcherWindow.builds_page.canCloseLauncherWithBuild = False
-    if not data.get('nogui') and b:
-        win.launcherWindow.showNormal()
-        win.launcherWindow.raise_()
-        win.launcherWindow.activateWindow()
-        hwnd = int(win.launcherWindow.winId())
-        bring_window_foreground(hwnd)
-    if data.get('swbn'):
-        win.launcherWindow.builds_page.launch_build_by_name(data['swbn'], data.get('nogui'))
-    if data.get('MCClose'):
-        win.launcherWindow.builds_page.stop_build(data.get('MCClose'), nogui=data.get('nogui'))
-    if data.get('instcore') and not data.get('nogui'):
-        build = {'core_version': data.get('instcore')[1], 'core_type': data.get('instcore')[0], 'minecraft': data.get('instcore')[2]}
-        win.launcherWindow.builds_page.install_core(build, nogui=data.get('nogui'))
+    def handle_message(msg, b=True):
+        data = json.loads(msg)
+        if not ArgsParser.msg.get('nogui') and win.launcherWindow.builds_page.canCloseLauncherWithBuild:
+            win.launcherWindow.builds_page.canCloseLauncherWithBuild = False
+        if not data.get('nogui') and b:
+            win.launcherWindow.showNormal()
+            win.launcherWindow.raise_()
+            win.launcherWindow.activateWindow()
+            hwnd = int(win.launcherWindow.winId())
+            bring_window_foreground(hwnd)
+        if data.get('swbn'):
+            win.launcherWindow.builds_page.launch_build_by_name(data['swbn'], data.get('nogui'))
+        if data.get('MCClose'):
+            win.launcherWindow.builds_page.stop_build(data.get('MCClose'), nogui=data.get('nogui'))
+        if data.get('instcore') and not data.get('nogui'):
+            build = {'core_version': data.get('instcore')[1], 'core_type': data.get('instcore')[0], 'minecraft': data.get('instcore')[2]}
+            win.launcherWindow.builds_page.install_core(build, nogui=data.get('nogui'))
 
 
-instance.message_received.connect(handle_message)
+    instance.message_received.connect(handle_message)
 
-print("Init UI...")
-win = Main()
 
-print("Raise window...")
-win.launcherWindow.showNormal()
-win.launcherWindow.raise_()
-win.launcherWindow.activateWindow()
-hwnd = int(win.launcherWindow.winId())
-bring_window_foreground(hwnd)
+    print("Init UI...")
+    win = Main()
+    # win.launcherWindow.show()
 
-_canHideConsole = sys.platform == "win32" and getattr(sys, 'frozen', False) and not ArgsParser.msg['debug']
-print("Hide console:", _canHideConsole)
-if _canHideConsole:
-    Console.hide()
+    print("Raise window...")
+    win.launcherWindow.showNormal()
+    win.launcherWindow.raise_()
+    win.launcherWindow.activateWindow()
+    hwnd = int(win.launcherWindow.winId())
+    bring_window_foreground(hwnd)
 
-app.setWindowIcon(QIcon(":Minecraft.png"))
-app.setStyleSheet(TEMPLATE_STYLE)
+    _canHideConsole = sys.platform == "win32" and getattr(sys, 'frozen', False) and not ArgsParser.msg['debug']
+    print("Hide console:", _canHideConsole)
+    if _canHideConsole:
+        Console.hide()
 
-if settings.get("checkUpdates", True):
-    win.launcherWindow.settings_page.checkUpdateForApp(True)
+    app.setWindowIcon(QIcon(":Minecraft.png"))
+    app.setStyleSheet(TEMPLATE_STYLE)
 
-blocker = TabBlocker()
-app.installEventFilter(blocker)
+    if settings.get("autoUpdate", True):
+        win.launcherWindow.settings_page.checkUpdateForApp(True)
 
-win.launcherWindow.builds_page.canCloseLauncherWithBuild = ArgsParser.msg.get('nogui')
+    blocker = TabBlocker()
+    app.installEventFilter(blocker)
 
-handle_message(json.dumps(ArgsParser.msg), False)
+    win.launcherWindow.builds_page.canCloseLauncherWithBuild = ArgsParser.msg.get('nogui')
 
-if ArgsParser.msg.get('with_update'):
-    win.launcherWindow.showUpdateSuccessfullInfo()
+    handle_message(json.dumps(ArgsParser.msg), False)
 
-app.exec()
+    if ArgsParser.msg.get('with_update'):
+        win.launcherWindow.showUpdateSuccessfullInfo()
+
+    app.exec()

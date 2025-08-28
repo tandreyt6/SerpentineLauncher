@@ -1,3 +1,5 @@
+from multiprocessing import Process, Queue
+
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QProgressBar, QTextEdit, QDialogButtonBox, QWidget
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer
 import logging
@@ -6,6 +8,19 @@ from UI.Style import TEMPLATE_STYLE
 from UI.translate import lang
 from UI.windows.windowAbs import DialogAbs
 
+
+def worker_process(installer, queue):
+    callback_dict = {
+        'setStatus': lambda status: queue.put(('setStatus', status)),
+        'setProgress': lambda progress: queue.put(('setProgress', progress)),
+        'setMax': lambda max_val: queue.put(('setMax', max_val))
+    }
+    installer.callback = callback_dict
+    try:
+        installer.install_version()
+        queue.put(('finished', True, ""))
+    except Exception as e:
+        queue.put(('finished', False, str(e)))
 
 class InstallerThread(QThread):
     progress_updated = pyqtSignal(int)
@@ -16,21 +31,37 @@ class InstallerThread(QThread):
     def __init__(self, installer):
         super().__init__()
         self.installer = installer
+        self.queue = Queue()
+        self.process = None
         self.canceled = False
 
     def run(self):
-        callback_dict = {
-            'setStatus': lambda status: self.status_updated.emit(status) if not self.canceled else None,
-            'setProgress': lambda progress: self.progress_updated.emit(progress) if not self.canceled else None,
-            'setMax': lambda max_val: self.max_updated.emit(max_val) if not self.canceled else None
-        }
+        self.process = Process(target=worker_process, args=(self.installer, self.queue), name="InstallerWorker")
+        self.process.start()
+        print(self.process)
 
-        try:
-            self.installer.callback = callback_dict
-            self.installer.install_version()
-            self.finished.emit(True, "")
-        except Exception as e:
-            self.finished.emit(False, str(e))
+        running = True
+        while running:
+            while not self.queue.empty():
+                msg = self.queue.get()
+                if msg[0] == 'setProgress' and not self.canceled:
+                    self.progress_updated.emit(msg[1])
+                elif msg[0] == 'setStatus' and not self.canceled:
+                    self.status_updated.emit(msg[1])
+                elif msg[0] == 'setMax':
+                    self.max_updated.emit(msg[1])
+                elif msg[0] == 'finished':
+                    self.finished.emit(msg[1], msg[2])
+                    running = False
+
+        if self.process.is_alive():
+            self.process.join()
+
+    def stop(self):
+        self.canceled = True
+        if self.process and self.process.is_alive():
+            self.process.terminate()
+            self.process.join()
 
 class InstallDialog(DialogAbs):
     def __init__(self, installer, parent=None):
@@ -100,7 +131,6 @@ class InstallDialog(DialogAbs):
     def cancel_installation(self):
         if not self.canceled:
             self.canceled = True
-            self.log_text.append(lang.Dialogs.cancel_installation)
-            self.thread.terminate()
-            self.thread.wait()
-            self.reject()
+        self.log_text.append(lang.Dialogs.cancel_installation)
+        self.thread.stop()
+        self.reject()

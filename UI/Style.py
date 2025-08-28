@@ -10,6 +10,11 @@ TEMPLATE_STYLE = """
         background-color: transparent;
         border: none;
     }
+    
+    QWidget#WindowsFramelessWindowCentralContainer {
+        background-color: #121212;
+        border: none;
+    }
 
     QLabel#title {
         font-size: 16px;
@@ -156,7 +161,7 @@ TEMPLATE_STYLE = """
 
     QFrame#build_card {
         background-color: #252526;
-        border: 1px solid #3F3F46;
+        border: 2px solid #3F3F46;
         border-radius: 6px;
         padding: 8px;
     }

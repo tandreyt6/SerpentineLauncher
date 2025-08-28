@@ -4,7 +4,7 @@ import subprocess
 import sys
 import time
 
-from PyQt6.QtCore import QTimer, QRect, Qt
+from PyQt6.QtCore import QTimer, QRect, Qt, QSize, QPoint
 from PyQt6.QtGui import QIcon, QCloseEvent
 
 import build_info
@@ -23,7 +23,7 @@ from UI.windows.windowAbs import WindowAbs, DialogAbs
 from UI.icons import resources
 
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QStackedWidget, QDialog, \
-    QApplication, QMessageBox
+    QApplication, QMessageBox, QMainWindow
 
 from func import settings, Console
 from func.GitUpdater import get_latest_release_tag, download_updater_exe, get_latest_release_tag_for_launcher_version
@@ -32,6 +32,7 @@ from func.GitUpdater import get_latest_release_tag, download_updater_exe, get_la
 class Window(WindowAbs):
     def __init__(self, mainWindow):
         super().__init__()
+        self.openBuildCard = None
         self.main = mainWindow
         self.central = QWidget()
         self.setCentralWidget(self.central)
@@ -40,9 +41,14 @@ class Window(WindowAbs):
 
         self.cardWidget = BuildCard(self)
         self.cardWidget.hide()
+        self.resizeSignal.connect(self.updateBuildCardSize)
+        # self.moveSignal.connect(self.updateBuildCardPosition)
+        self.updateBuildCardSize(self.geometry())
+        self.updateBuildCardPosition(QPoint(0, 0))
+        self.cardWidget.play_button.clicked.connect(self.startBuildFromCard)
 
-        self.h = QHBoxLayout()
         self.v = QVBoxLayout(self.central)
+        self.h = QHBoxLayout()
         self.v.addLayout(self.h, 1)
 
         self.h.setContentsMargins(0, 0, 0, 0)
@@ -110,6 +116,10 @@ class Window(WindowAbs):
 
         self.expPanel.mask.layout.addStretch()
         self.updatePanelState(False)
+
+    def startBuildFromCard(self):
+        self.cardWidget.hide()
+        self.builds_page.launch_build_by_name(self.openBuildCard)
 
     def updatePanelState(self, anim=True):
         if not settings.get('panelPositionBehavior', 0):
@@ -200,12 +210,14 @@ class Window(WindowAbs):
         if not self.settings_page._startLauncherAfterUpdate and not settings.get("silentUpdate", True):
             print("Silent installation is disabled.")
             super().closeEvent(event)
+            QApplication.quit()
             return
         print("Check update:", self.settings_page._SilentNeedUpdate)
         needLauncher, needUpdater = self.settings_page._SilentNeedUpdate
         if not (needLauncher or needUpdater):
             print("Latest version installer -> Closing App...")
             super().closeEvent(event)
+            QApplication.quit()
             return
         self.hide()
         ver, release = get_latest_release_tag_for_launcher_version(build_info.BUILD_VERSION)
@@ -215,6 +227,7 @@ class Window(WindowAbs):
         if not os.path.exists("updater.exe"):
             print("updater.exe not found")
             super().closeEvent(event)
+            QApplication.quit()
             return
         if needLauncher:
             self.settings_page.download_update_zip_for_later_installation(ver, release)
@@ -231,6 +244,7 @@ class Window(WindowAbs):
             print("wait updater.exe...")
             time.sleep(10)
         super().closeEvent(event)
+        QApplication.quit()
 
     def closeEvent(self, a0):
         if len(self.builds_page.allGameThreads) == 0:
@@ -243,6 +257,20 @@ class Window(WindowAbs):
             a0.ignore()
 
     def showBuildCard(self, build: dict, path: str):
+        print(build)
+        self.openBuildCard = build.get('name')
         self.cardWidget.set_build(build, path)
+        if self.builds_page.buildIsRunning(self.openBuildCard):
+            self.cardWidget.play_button.setText(lang.Elements.stop)
+            self.cardWidget.play_button.setObjectName("stop")
+        else:
+            self.cardWidget.play_button.setText(lang.Elements.play)
+            self.cardWidget.play_button.setObjectName("launch")
         self.cardWidget.show()
         self.cardWidget.raise_()
+
+    def updateBuildCardSize(self, event):
+        self.cardWidget.resize(event.width(), event.height())
+
+    def updateBuildCardPosition(self, event):
+        self.cardWidget.move(event.x()+30, event.y())

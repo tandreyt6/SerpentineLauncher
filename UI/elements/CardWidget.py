@@ -1,5 +1,7 @@
 import json
+import os
 import re
+import shutil
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QScrollArea, QLabel, QPushButton, QFrame,
@@ -9,6 +11,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QEvent, QPoint, QSize, QPropertyAnimation, QEasingCurve, QTimer
 from PyQt6.QtGui import QPainter, QBrush, QColor, QPaintEvent, QFont, QLinearGradient, QIcon, QPalette, QPixmap
 
+from UI.translate import lang
 from func import memory
 
 
@@ -40,7 +43,7 @@ class CardWidget(QWidget):
     def paintEvent(self, event: QPaintEvent):
         painter = QPainter(self)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(QColor(30, 30, 30, 200)))
+        painter.setBrush(QBrush(QColor(30, 30, 30, 255)))
         painter.drawRoundedRect(0, 0, self.width(), self.height()-30, 5, 5)
 
 
@@ -49,29 +52,20 @@ class BuildEditDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Редактировать карточку")
         self.build = build.copy() if build else {}
-
-        self.resize(600, 500)
+        print(self.build)
+        self.resize(600, 400)
 
         layout = QVBoxLayout(self)
+        layout.setSpacing(10)
 
         layout.addWidget(QLabel("Название сборки:"))
-        self.name_edit = QLineEdit(self.build.get("name", ""))
+        self.name_edit = QLineEdit(self.build.get("name", "No Name"))
         layout.addWidget(self.name_edit)
 
-        layout.addWidget(QLabel("Описание (HTML):"))
+        layout.addWidget(QLabel("Описание (текст):"))
         self.desc_edit = QTextEdit()
-        self.desc_edit.setText(self.build.get("description", ""))
+        self.desc_edit.setPlainText(self.build.get("description", ""))  # plain text вместо HTML
         layout.addWidget(self.desc_edit, 1)
-
-        hl_bg = QHBoxLayout()
-        hl_bg.addWidget(QLabel("Цвет фона:"))
-        self.bgcolor_edit = QLineEdit(self.build.get("background_color", "#2f2f2f"))
-        hl_bg.addWidget(self.bgcolor_edit)
-        self.bgcolor_btn = QPushButton("Выбрать цвет")
-        hl_bg.addWidget(self.bgcolor_btn)
-        layout.addLayout(hl_bg)
-
-        self.bgcolor_btn.clicked.connect(self.choose_color)
 
         hl_logo = QHBoxLayout()
         hl_logo.addWidget(QLabel("Путь к лого:"))
@@ -81,29 +75,42 @@ class BuildEditDialog(QDialog):
         hl_logo.addWidget(self.logo_browse_btn)
         layout.addLayout(hl_logo)
 
+
         self.logo_browse_btn.clicked.connect(self.browse_logo)
 
         self.logo_preview = QLabel()
         self.logo_preview.setFixedSize(96, 96)
         self.logo_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.logo_preview, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.load_existing_logo()
         self.update_logo_preview()
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
-        layout.addWidget(buttons)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
+        hl_buttons = QHBoxLayout()
+        hl_buttons.addStretch(1)
 
-    def choose_color(self):
-        current_color = QColor(self.bgcolor_edit.text())
-        color = QColorDialog.getColor(current_color, self, "Выберите цвет фона")
-        if color.isValid():
-            self.bgcolor_edit.setText(color.name())
+        self.save_btn = QPushButton("Сохранить")
+        self.cancel_btn = QPushButton("Отмена")
+
+        hl_buttons.addWidget(self.save_btn)
+        hl_buttons.addWidget(self.cancel_btn)
+
+        layout.addLayout(hl_buttons)
+
+        self.save_btn.clicked.connect(self.accept)
+        self.cancel_btn.clicked.connect(self.reject)
 
     def browse_logo(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Выберите файл лого", "", "Images (*.png *.jpg *.bmp)")
+        path, _ = QFileDialog.getOpenFileName(self, "Выбрать логотип", "", "Images (*.png *.jpg *.bmp)")
         if path:
             self.logo_path_edit.setText(path)
+            self.update_logo_preview()
+
+    def load_existing_logo(self):
+        build_manager = memory.get("build_manager")
+        build_path = build_manager.get_build_path(build_manager.get_build(self.build.get('name')))
+        bg_path = os.path.join(build_path, "bg.png")
+        if os.path.isfile(bg_path):
+            self.logo_path_edit.setText(bg_path)
             self.update_logo_preview()
 
     def update_logo_preview(self):
@@ -111,16 +118,23 @@ class BuildEditDialog(QDialog):
         if path:
             pixmap = QPixmap(path)
             if not pixmap.isNull():
-                scaled = pixmap.scaled(96, 96, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                self.logo_preview.setPixmap(scaled)
-                return
-        self.logo_preview.clear()
+                self.logo_preview.setPixmap(pixmap.scaled(96, 96, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            else:
+                self.logo_preview.setText("Нет изображения")
+        else:
+            self.logo_preview.setText("Нет изображения")
 
     def accept(self) -> None:
         self.build["name"] = self.name_edit.text()
         self.build["description"] = self.desc_edit.toPlainText()
-        self.build["background_color"] = self.bgcolor_edit.text()
-        self.build["logo_path"] = self.logo_path_edit.text()
+        logo_path = self.logo_path_edit.text()
+        if logo_path:
+            build_manager = memory.get("build_manager")
+            build_path = build_manager.get_build_path(build_manager.get_build(self.build.get('name')))
+            print(f"{build_path}\\bg.png", logo_path)
+            if logo_path != f"{build_path}\\bg.png":
+                shutil.copyfile(logo_path, f"{build_path}\\bg.png")
+                print(f"{build_path}/bg.png")
         super().accept()
 
 
@@ -132,7 +146,7 @@ class BuildCard(CardWidget):
         self.edit_mode = False
         self._original_logo_pixmap = None
         self._original_bg_pixmap = None
-        self.setMinimumHeight(500)
+        self.setMinimumSize(0, 0)
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -177,7 +191,7 @@ class BuildCard(CardWidget):
         buttons_layout.setContentsMargins(0, 0, 0, 0)
         buttons_layout.setSpacing(10)
 
-        self.play_button = QPushButton("Играть", self.buttons_widget)
+        self.play_button = QPushButton(lang.Elements.play, self.buttons_widget)
         self.play_button.setFixedSize(120, 40)
         self.play_button.setObjectName("PlayButton")
 
@@ -186,7 +200,7 @@ class BuildCard(CardWidget):
         self.more_button.setObjectName("MoreButton")
         self.more_button.clicked.connect(self.show_more_menu)
 
-        self.close_button = QPushButton("Закрыть", self.buttons_widget)
+        self.close_button = QPushButton(lang.Dialogs.close, self.buttons_widget)
         self.close_button.setFixedSize(120, 40)
         self.close_button.setObjectName("CloseButton")
         self.close_button.clicked.connect(self.hide)
@@ -250,17 +264,22 @@ class BuildCard(CardWidget):
 
     def show_more_menu(self):
         menu = QMenu()
-        edit_action = menu.addAction("Редактировать карточку")
+        edit_action = menu.addAction(lang.Elements.edit)
         edit_action.triggered.connect(self.open_edit_dialog)
         menu.exec(self.more_button.mapToGlobal(QPoint(0, self.more_button.height())))
 
     def open_edit_dialog(self):
         if not self.build:
             return
+        memory.get("build_manager").get_build_path(memory.get("build_manager").get_build(self.build.get('name')))
         dlg = BuildEditDialog(self.build, self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
+        x = dlg.exec()
+        print(x)
+        if x == QDialog.DialogCode.Accepted:
             self.set_build(dlg.build, self.path)
             memory.get("build_manager").update_build(dlg.build)
+            print(dlg.build, self.path)
+            self.set_build(dlg.build, self.path)
 
     def set_build(self, build: dict, path):
         self.build = build

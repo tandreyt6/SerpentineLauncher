@@ -86,7 +86,7 @@ class SettingsWidget(QWidget):
         ver = get_latest_release_tag()
         if ver is None:
             if not silent:
-                print("Ошибка получения версии с сервера")
+                print("Error get info from server")
             return
 
         LauncherVersion = THIS_VERSION if THIS_VERSION != "X" else "-1"
@@ -97,7 +97,7 @@ class SettingsWidget(QWidget):
             latestUpdater = int(ver[1:].split(".")[1])
         except Exception as e:
             if not silent:
-                print("Ошибка разбора версии:", e)
+                print("Error check version:", e)
             return
 
         currentLauncher = int(LauncherVersion) if LauncherVersion.isdigit() else -1
@@ -209,7 +209,7 @@ class SettingsWidget(QWidget):
         self.language_combo.currentTextChanged.connect(self.langChange)
 
         self.autoupdate_chechbox = AnimatedToggle()
-        self.autoupdate_chechbox.setChecked(settings.get("checkUpdates", True))
+        self.autoupdate_chechbox.setChecked(settings.get("autoUpdate", True))
         self.autoupdate_chechbox.toggled.connect(self.setAutoUpdate)
         layout.addRow(self.autoupdate_chechbox, QLabel(lang.Dialogs.check_auto_update))
 
